@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UThuya — Upload Items</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Padauk:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Inter', 'Padauk', -apple-system, BlinkMacSystemFont, sans-serif; }
+  .my { font-family: 'Padauk', 'Inter', sans-serif; }
+  .card-shadow { box-shadow: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04); }
+  .dropzone-active { background-color: #fef3c7; border-color: #f59e0b; }
+  .saved-pulse { animation: savedPulse 1.5s ease-out; }
+  @keyframes savedPulse {
+    0% { background-color: #dcfce7; }
+    100% { background-color: transparent; }
+  }
+  /* Hide scrollbar for image preview */
+  .scroll-x::-webkit-scrollbar { display: none; }
+  .scroll-x { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
+</head>
+<body class="bg-zinc-50 min-h-screen">
+
+<div x-data="uploadApp()" x-init="init()" class="max-w-4xl mx-auto px-4 py-6 pb-32">
+
+  <!-- Header -->
+  <header class="mb-6">
+    <div class="flex items-center justify-between mb-2">
+      <h1 class="text-2xl font-bold text-zinc-900 my">ပစ္စည်းအသစ်တင်ရန်</h1>
+      <button @click="showSettings = !showSettings"
+              class="text-zinc-500 hover:text-zinc-700 p-2 -mr-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+    </div>
+    <p class="text-sm text-zinc-500 my">ပုံတင်ပြီး AI က auto-detect ပေးပါမယ်။ မှန်ကန်ကြောင်း စစ်ပြီး Save လုပ်ပါ။ ပြီးရင် အားလုံးကို Publish လုပ်ပါ။</p>
+  </header>
+
+  <!-- Settings panel (collapsed by default) -->
+  <div x-show="showSettings" x-transition class="mb-6 p-4 bg-white rounded-lg card-shadow border border-zinc-200">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="block">
+        <span class="text-xs font-medium text-zinc-700">Upload Endpoint</span>
+        <input type="text" x-model="config.uploadUrl"
+               class="mt-1 w-full px-3 py-2 text-sm border border-zinc-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+      </label>
+      <label class="block">
+        <span class="text-xs font-medium text-zinc-700">Drafts API</span>
+        <input type="text" x-model="config.draftsApi"
+               class="mt-1 w-full px-3 py-2 text-sm border border-zinc-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+      </label>
+      <label class="block">
+        <span class="text-xs font-medium text-zinc-700">Upload Token</span>
+        <input type="password" x-model="config.uploadToken"
+               class="mt-1 w-full px-3 py-2 text-sm border border-zinc-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+      </label>
+      <label class="block">
+        <span class="text-xs font-medium text-zinc-700">Admin Token</span>
+        <input type="password" x-model="config.adminToken"
+               class="mt-1 w-full px-3 py-2 text-sm border border-zinc-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+      </label>
+    </div>
+    <button @click="saveConfig()" class="mt-3 px-4 py-2 bg-zinc-900 text-white text-sm rounded-md hover:bg-zinc-800">Save Config</button>
+  </div>
+
+  <!-- Dropzone -->
+  <div
+    @dragover.prevent="dragActive = true"
+    @dragleave.prevent="dragActive = false"
+    @drop.prevent="handleDrop($event)"
+    :class="dragActive ? 'dropzone-active' : 'border-zinc-300 bg-white'"
+    class="border-2 border-dashed rounded-xl p-8 text-center transition-colors mb-6">
+
+    <input type="file" id="file-input" multiple accept="image/*"
+           @change="handleFiles($event.target.files)" class="hidden">
+
+    <div class="flex flex-col items-center gap-3">
+      <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+        <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+      </div>
+      <div>
+        <p class="text-sm font-medium text-zinc-900 my">ပုံတွေကို ဒီနေရာဆွဲချပါ</p>
+        <p class="text-xs text-zinc-500 mt-1">တချိန်တည်း ၁၀ ပုံအထိ တင်နိုင်ပါတယ်</p>
+      </div>
+      <label for="file-input"
+             class="cursor-pointer px-4 py-2 bg-zinc-900 text-white text-sm rounded-md hover:bg-zinc-800 transition-colors">
+        ပုံရွေးပါ
+      </label>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div x-show="cards.length > 0" class="mb-4 flex items-center justify-between gap-3 text-sm">
+    <div class="flex items-center gap-4">
+      <span class="text-zinc-600">
+        စုစုပေါင်း <span class="font-semibold text-zinc-900" x-text="cards.length"></span> ပုံ
+      </span>
+      <span class="text-emerald-600">
+        Saved <span class="font-semibold" x-text="savedCount"></span>
+      </span>
+      <span class="text-amber-600" x-show="unsavedCount > 0">
+        Unsaved <span class="font-semibold" x-text="unsavedCount"></span>
+      </span>
+      <span class="text-zinc-400" x-show="uploadingCount > 0">
+        Uploading <span class="font-semibold" x-text="uploadingCount"></span>
+      </span>
+    </div>
+    <button @click="clearAll()" class="text-xs text-zinc-500 hover:text-rose-600">အားလုံးဖျက်</button>
+  </div>
+
+  <!-- Cards stack -->
+  <div class="space-y-4">
+    <template x-for="(card, idx) in cards" :key="card.localId">
+      <div class="bg-white rounded-xl card-shadow border border-zinc-200 overflow-hidden"
+           :class="card.justSaved ? 'saved-pulse' : ''">
+
+        <!-- Uploading state -->
+        <template x-if="card.status === 'uploading'">
+          <div class="p-6 flex items-center gap-4">
+            <div class="w-24 h-24 bg-zinc-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg class="w-6 h-6 text-zinc-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-medium text-zinc-900" x-text="card.fileName"></p>
+              <p class="text-xs text-zinc-500 mt-1">Uploading + AI analyzing...</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Error state -->
+        <template x-if="card.status === 'error'">
+          <div class="p-6 flex items-center gap-4 bg-rose-50">
+            <div class="w-24 h-24 bg-rose-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg class="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-medium text-rose-900" x-text="card.fileName"></p>
+              <p class="text-xs text-rose-600 mt-1 my" x-text="card.error || 'Upload မအောင်မြင်ပါ'"></p>
+              <button @click="retryUpload(idx)" class="mt-2 text-xs text-rose-700 underline">ထပ်ကြိုးစားရန်</button>
+              <button @click="removeCard(idx)" class="mt-2 ml-3 text-xs text-zinc-500 underline">ဖျက်ရန်</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Edit state -->
+        <template x-if="card.status === 'ready' || card.status === 'saved'">
+          <div class="p-4 sm:p-5">
+            <div class="flex gap-4">
+
+              <!-- Thumbnail -->
+              <div class="flex-shrink-0">
+                <a :href="card.public_url" target="_blank" class="block">
+                  <img :src="card.public_url" :alt="card.fileName"
+                       class="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-lg border border-zinc-200">
+                </a>
+                <div class="mt-2 text-center">
+                  <span x-show="card.status === 'saved'"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                    Saved
+                  </span>
+                  <span x-show="card.status === 'ready'"
+                        class="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                    Unsaved
+                  </span>
+                </div>
+              </div>
+
+              <!-- Fields -->
+              <div class="flex-1 min-w-0 space-y-3">
+
+                <!-- AI confidence + filename -->
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs text-zinc-500 truncate" x-text="card.fileName"></span>
+                  <span class="text-xs text-zinc-400 flex-shrink-0" x-show="card.ai_confidence !== undefined">
+                    AI: <span x-text="Math.round((card.ai_confidence || 0) * 100)"></span>%
+                  </span>
+                </div>
+
+                <!-- Row 1: item_code, category -->
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700">Item Code</span>
+                    <input type="text" x-model="card.item_code" @input="markDirty(idx)"
+                           placeholder="260624-001"
+                           class="mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700 my">အမျိုးအစား</span>
+                    <select x-model="card.category" @change="markDirty(idx)"
+                            class="my mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                      <option value="">-</option>
+                      <option value="ပါတိတ်">ပါတိတ်</option>
+                      <option value="ထဘီ">ထဘီ</option>
+                      <option value="ဝမ်းဆက်">ဝမ်းဆက်</option>
+                      <option value="အိမ်နေဝတ်စုံ">အိမ်နေဝတ်စုံ</option>
+                      <option value="အခြား">အခြား</option>
+                    </select>
+                  </label>
+                </div>
+
+                <!-- Row 2: color, size -->
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700 my">အရောင်</span>
+                    <input type="text" x-model="card.color" @input="markDirty(idx)"
+                           placeholder="အမဲရောင်"
+                           class="my mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700">Size</span>
+                    <select x-model="card.size" @change="markDirty(idx)"
+                            class="mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                      <option value="">-</option>
+                      <option value="Free">Free</option>
+                      <option value="S">S</option>
+                      <option value="M">M</option>
+                      <option value="L">L</option>
+                      <option value="XL">XL</option>
+                      <option value="2XL">2XL</option>
+                      <option value="M-L">M-L</option>
+                      <option value="L-XL">L-XL</option>
+                    </select>
+                  </label>
+                </div>
+
+                <!-- Row 3: price, stock -->
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700 my">ဈေး (MMK)</span>
+                    <input type="number" x-model.number="card.price" @input="markDirty(idx)"
+                           placeholder="12000" min="0"
+                           class="mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-zinc-700">Stock</span>
+                    <input type="number" x-model.number="card.stock" @input="markDirty(idx)"
+                           placeholder="1" min="0"
+                           class="mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                  </label>
+                </div>
+
+                <!-- Collapsible: body measurements -->
+                <details class="group">
+                  <summary class="cursor-pointer text-xs font-medium text-zinc-600 hover:text-zinc-900 select-none flex items-center gap-1 my">
+                    <svg class="w-3 h-3 transition-transform group-open:rotate-90" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/>
+                    </svg>
+                    ဆိုဒ်အသေးစိတ် (ဝန်ချိန် / ရင်ဘတ် / ခါး)
+                  </summary>
+                  <div class="mt-2 pl-4 space-y-2">
+                    <div>
+                      <span class="text-xs text-zinc-500 my">ဝန်ချိန် (kg)</span>
+                      <div class="grid grid-cols-2 gap-2 mt-1">
+                        <input type="number" x-model.number="card.weight_min" @input="markDirty(idx)"
+                               placeholder="min" step="0.5"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                        <input type="number" x-model.number="card.weight_max" @input="markDirty(idx)"
+                               placeholder="max" step="0.5"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                      </div>
+                    </div>
+                    <div>
+                      <span class="text-xs text-zinc-500 my">ရင်ဘတ် (cm)</span>
+                      <div class="grid grid-cols-2 gap-2 mt-1">
+                        <input type="number" x-model.number="card.chest_min" @input="markDirty(idx)"
+                               placeholder="min"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                        <input type="number" x-model.number="card.chest_max" @input="markDirty(idx)"
+                               placeholder="max"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                      </div>
+                    </div>
+                    <div>
+                      <span class="text-xs text-zinc-500 my">ခါး (cm)</span>
+                      <div class="grid grid-cols-2 gap-2 mt-1">
+                        <input type="number" x-model.number="card.waist_min" @input="markDirty(idx)"
+                               placeholder="min"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                        <input type="number" x-model.number="card.waist_max" @input="markDirty(idx)"
+                               placeholder="max"
+                               class="px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md">
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Knowledge -->
+                <label class="block">
+                  <span class="text-xs font-medium text-zinc-700 my">အသိပညာ / မှတ်ချက် (optional)</span>
+                  <textarea x-model="card.knowledge" @input="markDirty(idx)" rows="2"
+                            placeholder="ဥပမာ: ဝတ်လို့ပေါ့ပါးတယ်၊ ပါတိတ်စစ်စစ်ပါ"
+                            class="my mt-1 w-full px-2.5 py-1.5 text-sm border border-zinc-300 rounded-md focus:ring-1 focus:ring-amber-500 focus:border-amber-500"></textarea>
+                </label>
+
+                <!-- Actions -->
+                <div class="flex items-center justify-between gap-2 pt-2">
+                  <button @click="removeCard(idx)"
+                          class="text-xs text-rose-600 hover:text-rose-700 my">ဖျက်ရန်</button>
+                  <button @click="saveCard(idx)"
+                          :disabled="card.saving || (!card.dirty && card.status === 'saved')"
+                          :class="card.dirty || card.status !== 'saved'
+                                  ? 'bg-zinc-900 hover:bg-zinc-800 text-white'
+                                  : 'bg-zinc-100 text-zinc-400 cursor-not-allowed'"
+                          class="px-4 py-1.5 text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+                    <span x-show="!card.saving">Save</span>
+                    <span x-show="card.saving">Saving...</span>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </template>
+  </div>
+
+  <!-- Empty state -->
+  <div x-show="cards.length === 0" class="text-center py-12">
+    <p class="text-sm text-zinc-400 my">ပုံတင်ပြီးတဲ့အခါ ဒီနေရာမှာ ပြပါမယ်</p>
+  </div>
+
+  <!-- Sticky publish bar -->
+  <div x-show="savedCount > 0"
+       x-transition
+       class="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 shadow-lg">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="text-sm">
+        <span class="font-semibold text-zinc-900" x-text="savedCount"></span>
+        <span class="text-zinc-600 my"> ပစ္စည်း Publish လုပ်ဖို့ အသင့်ပါ</span>
+        <span x-show="unsavedCount > 0" class="text-amber-600 text-xs ml-2 my">
+          (<span x-text="unsavedCount"></span> ပစ္စည်း save လုပ်ဖို့ ကျန်နေသေး)
+        </span>
+      </div>
+      <button @click="publishAll()" :disabled="publishing"
+              class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+        <span x-show="!publishing" class="my">Publish အားလုံး</span>
+        <span x-show="publishing">Publishing...</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="fixed top-4 right-4 z-50 space-y-2">
+    <template x-for="t in toasts" :key="t.id">
+      <div x-transition
+           :class="t.type === 'error' ? 'bg-rose-600' : t.type === 'success' ? 'bg-emerald-600' : 'bg-zinc-900'"
+           class="px-4 py-2 text-white text-sm rounded-md shadow-lg max-w-xs">
+        <span x-text="t.msg"></span>
+      </div>
+    </template>
+  </div>
+
+</div>
+
+<script>
+function uploadApp() {
+  return {
+    // ----- State -----
+    cards: [],
+    dragActive: false,
+    publishing: false,
+    showSettings: false,
+    toasts: [],
+    nextLocalId: 1,
+    config: {
+      uploadUrl: 'https://n8n.srv1695682.hstgr.cloud/webhook/uthuya-bulk-upload',
+      draftsApi: 'https://n8n.srv1695682.hstgr.cloud/webhook/uthuya-drafts-api',
+      uploadToken: 'uthuya2026secret',
+      adminToken: 'uthuya2026'
+    },
+
+    // ----- Lifecycle -----
+    init() {
+      const saved = localStorage.getItem('uthuya_upload_config');
+      if (saved) {
+        try { Object.assign(this.config, JSON.parse(saved)); } catch (e) {}
+      }
+    },
+
+    saveConfig() {
+      localStorage.setItem('uthuya_upload_config', JSON.stringify(this.config));
+      this.showSettings = false;
+      this.toast('Config saved', 'success');
+    },
+
+    // ----- Computed counts -----
+    get savedCount() { return this.cards.filter(c => c.status === 'saved' && !c.dirty).length; },
+    get unsavedCount() { return this.cards.filter(c => c.status === 'ready' || (c.status === 'saved' && c.dirty)).length; },
+    get uploadingCount() { return this.cards.filter(c => c.status === 'uploading').length; },
+
+    // ----- File handling -----
+    handleDrop(e) {
+      this.dragActive = false;
+      if (e.dataTransfer && e.dataTransfer.files) this.handleFiles(e.dataTransfer.files);
+    },
+
+    handleFiles(fileList) {
+      const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+      if (files.length === 0) { this.toast('Image files ပဲတင်လို့ရပါတယ်', 'error'); return; }
+      if (files.length > 10) { this.toast('တချိန်တည်း ၁၀ ပုံပဲ တင်နိုင်ပါတယ်', 'error'); return; }
+
+      const batchId = crypto.randomUUID();
+      files.forEach(file => this.uploadFile(file, batchId));
+    },
+
+    async uploadFile(file, batchId) {
+      const localId = this.nextLocalId++;
+      const card = {
+        localId,
+        fileName: file.name,
+        status: 'uploading',
+        dirty: false,
+        saving: false,
+        justSaved: false
+      };
+      this.cards.push(card);
+      const idx = this.cards.findIndex(c => c.localId === localId);
+
+      try {
+        const res = await fetch(this.config.uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'image/jpeg',
+            'X-Upload-Token': this.config.uploadToken,
+            'X-Filename': file.name,
+            'X-Batch-Id': batchId
+          },
+          body: file
+        });
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        if (!data.ok || !data.draft_id) {
+          throw new Error(data.error || 'Upload failed');
+        }
+
+        // Hydrate card with response
+        const real = this.cards.findIndex(c => c.localId === localId);
+        if (real === -1) return;
+        Object.assign(this.cards[real], {
+          status: 'ready',
+          draft_id: data.draft_id,
+          public_url: data.public_url,
+          item_code: data.suggested_item_code || '',
+          variant_id: data.suggested_item_code || '',
+          category: data.detected_category || '',
+          color: data.detected_color || '',
+          size: 'Free',
+          price: null,
+          stock: 1,
+          knowledge: '',
+          weight_min: null, weight_max: null,
+          chest_min: null, chest_max: null,
+          waist_min: null, waist_max: null,
+          ai_confidence: data.ai_confidence || 0,
+          dirty: true  // needs save because user added price/size
+        });
+      } catch (err) {
+        const real = this.cards.findIndex(c => c.localId === localId);
+        if (real !== -1) {
+          this.cards[real].status = 'error';
+          this.cards[real].error = err.message || 'Network error';
+          this.cards[real]._file = file;  // keep for retry
+          this.cards[real]._batchId = batchId;
+        }
+      }
+    },
+
+    retryUpload(idx) {
+      const card = this.cards[idx];
+      if (!card._file) return;
+      this.cards.splice(idx, 1);
+      this.uploadFile(card._file, card._batchId);
+    },
+
+    // ----- Edit lifecycle -----
+    markDirty(idx) {
+      if (this.cards[idx]) this.cards[idx].dirty = true;
+    },
+
+    async saveCard(idx) {
+      const card = this.cards[idx];
+      if (!card || !card.draft_id) return;
+
+      // Validation
+      if (!card.item_code || !card.item_code.trim()) {
+        this.toast('Item Code ထည့်ပါ', 'error'); return;
+      }
+      if (!card.category) { this.toast('အမျိုးအစား ရွေးပါ', 'error'); return; }
+      if (!card.price || card.price <= 0) { this.toast('ဈေး ထည့်ပါ', 'error'); return; }
+
+      card.saving = true;
+      try {
+        const patch = {
+          item_code: String(card.item_code).trim(),
+          variant_id: String(card.item_code).trim(),
+          category: card.category || null,
+          color: card.color || null,
+          size: card.size || 'Free',
+          price: card.price,
+          stock: card.stock || 1,
+          knowledge: card.knowledge || null,
+          weight_min: card.weight_min, weight_max: card.weight_max,
+          chest_min: card.chest_min, chest_max: card.chest_max,
+          waist_min: card.waist_min, waist_max: card.waist_max
+        };
+
+        const res = await fetch(this.config.draftsApi, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': this.config.adminToken },
+          body: JSON.stringify({ action: 'update', draft_id: card.draft_id, patch })
+        });
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.ok === false) throw new Error(data.error || 'Save failed');
+
+        card.status = 'saved';
+        card.dirty = false;
+        card.justSaved = true;
+        setTimeout(() => { card.justSaved = false; }, 1500);
+      } catch (err) {
+        this.toast('Save မအောင်မြင်ပါ: ' + err.message, 'error');
+      } finally {
+        card.saving = false;
+      }
+    },
+
+    async removeCard(idx) {
+      const card = this.cards[idx];
+      if (!card) return;
+      if (!confirm('ဒီပစ္စည်းကို ဖျက်မှာ သေချာလား?')) return;
+
+      // If has draft_id, delete server-side
+      if (card.draft_id) {
+        try {
+          await fetch(this.config.draftsApi, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Admin-Token': this.config.adminToken },
+            body: JSON.stringify({ action: 'delete', draft_id: card.draft_id })
+          });
+        } catch (e) { /* best effort */ }
+      }
+      this.cards.splice(idx, 1);
+    },
+
+    clearAll() {
+      if (!confirm('Card အားလုံးကို ဖျက်မှာ သေချာလား? (Saved drafts ကို server မှာ မဖျက်ပါ)')) return;
+      this.cards = [];
+    },
+
+    // ----- Publish -----
+    async publishAll() {
+      const readyDraftIds = this.cards
+        .filter(c => c.status === 'saved' && !c.dirty && c.draft_id)
+        .map(c => c.draft_id);
+
+      if (readyDraftIds.length === 0) {
+        this.toast('Save လုပ်ပြီးတဲ့ ပစ္စည်းမရှိပါ', 'error');
+        return;
+      }
+
+      this.publishing = true;
+      try {
+        const res = await fetch(this.config.draftsApi, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': this.config.adminToken },
+          body: JSON.stringify({ action: 'publish', draft_ids: readyDraftIds })
+        });
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.ok === false) throw new Error(data.error || 'Publish failed');
+
+        this.toast(`Published ${data.published_count || readyDraftIds.length} items ✓`, 'success');
+        // Remove published cards
+        this.cards = this.cards.filter(c => !readyDraftIds.includes(c.draft_id));
+      } catch (err) {
+        this.toast('Publish မအောင်မြင်ပါ: ' + err.message, 'error');
+      } finally {
+        this.publishing = false;
+      }
+    },
+
+    // ----- Toasts -----
+    toast(msg, type = 'info') {
+      const id = Date.now() + Math.random();
+      this.toasts.push({ id, msg, type });
+      setTimeout(() => {
+        this.toasts = this.toasts.filter(t => t.id !== id);
+      }, 3500);
+    }
+  };
+}
+</script>
+</body>
+</html>
